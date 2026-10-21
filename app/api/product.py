@@ -4,7 +4,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.api.categories import get_db
 from app.models import Product, Category
-from app.schemas.product import ProductCreate,ProductResponse
+from app.schemas.product import ProductCreate,ProductResponse,ProductDetailResponse
 
 router = APIRouter(prefix="/products", tags=["Products"])
 
@@ -72,3 +72,19 @@ def search_products(
 @router.get("/", response_model=list[ProductResponse])
 def get_products(db: Session = Depends(get_db)):
     return db.query(Product).all()
+
+
+@router.get("/{product_id}/details", response_model=ProductDetailResponse)
+def get_product_details(
+    product_id: int,
+    db: Session = Depends(get_db)
+):
+
+    product = db.query(Product).filter(
+        Product.id == product_id
+    ).first()
+
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    return product

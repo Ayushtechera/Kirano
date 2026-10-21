@@ -1,6 +1,7 @@
 from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field
-
+from datetime import datetime, date
+from decimal import Decimal
 
 class ProductCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
@@ -22,3 +23,15 @@ class ProductResponse(BaseModel):
     cost_price: Decimal
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class InventoryBatchResponse(BaseModel):
+    id: int
+    quantity: int
+    expiry_date: date
+    stock_added_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+class ProductDetailResponse(ProductResponse):
+    inventory_batches: list[InventoryBatchResponse] = Field(default_factory=list)
