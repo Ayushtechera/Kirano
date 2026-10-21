@@ -13,10 +13,9 @@ class StockInResponse(BaseModel):
     id: int
     product_id: int
     quantity: int
-    expiry_date: int
-    stock_added_at: date
+    expiry_date: date
+    stock_added_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
 
-    
