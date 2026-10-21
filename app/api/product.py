@@ -88,3 +88,32 @@ def get_product_details(
         raise HTTPException(status_code=404, detail="Product not found")
 
     return product
+
+
+@router.get("/by-name/{name}", response_model=ProductDetailResponse)
+def get_product_by_name(name: str, db: Session = Depends(get_db)):
+
+    product = db.query(Product).filter(
+        Product.name.ilike(name.strip())
+    ).first()
+
+    if not product:
+        raise HTTPException(status_code=404 , detail="Product not found")
+
+    return product
+
+
+@router.get("/barcode/{barcode}/details", response_model=ProductDetailResponse)
+def get_product_by_barcode_details(
+    barcode: str,
+    db: Session = Depends(get_db)
+):
+    product = db.query(Product).filter(
+        Product.barcode == barcode.strip()
+    ).first()
+
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    return product
+
