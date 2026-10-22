@@ -34,7 +34,6 @@ def create_product(data: ProductCreate,db: Session = Depends(get_db)):
         )
 
 
-
     category = db.query(Category).filter(
         Category.id == data.category_id
     ).first()
@@ -144,7 +143,7 @@ def get_product_stock(product_id: int , db : Session = Depends(get_db)):
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
-    total_stack = db.query(
+    total_stock = db.query(
         func.coalesce(func.sum(InventoryBatch.quantity),0)
     ).filter(
         InventoryBatch.product_id == product_id
@@ -153,7 +152,7 @@ def get_product_stock(product_id: int , db : Session = Depends(get_db)):
     return{
         "product_id": product_id,
         "product_name":product.name,
-        "total_stack":total_stack
+        "total_stack":total_stock
     }
 
 
