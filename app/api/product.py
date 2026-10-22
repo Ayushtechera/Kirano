@@ -6,7 +6,7 @@ from sqlalchemy import func
 
 from app.api.categories import get_db
 from app.models import Product, Category, InventoryBatch 
-from app.schemas.product import ProductCreate,ProductResponse,ProductDetailResponse
+from app.schemas.product import ProductCreate,ProductResponse,ProductDetailResponse, ProductUpdate
 
 
 router = APIRouter(prefix="/products", tags=["Products"])
@@ -20,6 +20,20 @@ def create_product(data: ProductCreate,db: Session = Depends(get_db)):
 
     if existing:
         raise HTTPException(status_code=409, detail="Barcode already exists")
+
+    existing_product = db.query(Product).filter(
+        Product.name.ilike(data.name.strip()),
+        Product.weight == data.weight,
+        Product.category_id == data.category_id
+    ).first()
+
+    if existing_product:
+        raise HTTPException(
+            status_code=409,
+            detail="Similar product already exists. Use the existing product."
+        )
+
+
 
     category = db.query(Category).filter(
         Category.id == data.category_id
@@ -141,3 +155,40 @@ def get_product_stock(product_id: int , db : Session = Depends(get_db)):
         "product_name":product.name,
         "total_stack":total_stack
     }
+
+
+
+@router.patch("/{product.id}", response_model=ProductResponse)
+def update_product(product_id:int , data:ProductUpdate, db: Session = Depends(get_db)):
+    product = db.query(Product).filer(
+        Product.id == product_id
+    ).first()
+
+    if not product:
+        raise HTTPException(status_code=404, detail = "Product not found")
+
+    update = data.model_dump(exclude_unset=True)
+
+    for field, value in update.items():
+        setattr(product, field, value)
+
+    db.commit()
+    db.refresh(product)
+
+    return product
+
+
+@router.delete("/{product_id}",status_code=204)
+def delete_product(
+    product_id:int,
+    db: Session = Depends(get_db)
+):
+    product = db.query(Product).filter(
+        Product.id == product_id
+    ).first()
+
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    db.delete(product)
+    db.commit()

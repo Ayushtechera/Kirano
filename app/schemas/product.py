@@ -35,3 +35,10 @@ class InventoryBatchResponse(BaseModel):
 
 class ProductDetailResponse(ProductResponse):
     inventory_batches: list[InventoryBatchResponse] = Field(default_factory=list)
+
+
+class ProductUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1,max_length=100)
+    weight: str | None = None
+    selling_price: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
+    cost_price: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
