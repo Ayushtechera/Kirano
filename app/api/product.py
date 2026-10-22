@@ -160,7 +160,7 @@ def get_product_stock(product_id: int , db : Session = Depends(get_db)):
 
 @router.patch("/{product.id}", response_model=ProductResponse)
 def update_product(product_id:int , data:ProductUpdate, db: Session = Depends(get_db)):
-    product = db.query(Product).filer(
+    product = db.query(Product).filter(
         Product.id == product_id
     ).first()
 
