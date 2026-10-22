@@ -1,10 +1,13 @@
 from fastapi import APIRouter,Depends,HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import func
+
 
 from app.api.categories import get_db
-from app.models import Product, Category
+from app.models import Product, Category, InventoryBatch 
 from app.schemas.product import ProductCreate,ProductResponse,ProductDetailResponse
+
 
 router = APIRouter(prefix="/products", tags=["Products"])
 
@@ -117,3 +120,24 @@ def get_product_by_barcode_details(
 
     return product
 
+
+@router.get("/{product_id}/stock")
+def get_product_stock(product_id: int , db : Session = Depends(get_db)):
+    product = db.query(Product).filter(
+        Product.id == product_id
+    ).first()
+
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    total_stack = db.query(
+        func.coalesce(func.sum(InventoryBatch.quantity),0)
+    ).filter(
+        InventoryBatch.product_id == product_id
+    ).scalar()
+
+    return{
+        "product_id": product_id,
+        "product_name":product.name,
+        "total_stack":total_stack
+    }
