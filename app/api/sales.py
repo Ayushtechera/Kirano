@@ -194,32 +194,25 @@ def preview_sale(data: SaleCreate,db: Session = Depends(get_db)):
     return preview_response
 
 
+@router.get("/",response_model=list[SaleResponse])
+def get_sale(db: Session = Depends(get_db)):
 
-# @router.post("/checkout", response_model=SaleResponse)
-# def checkout_sale(data: SaleCheckoutCreate, db: Session = Depends(get_db)):
-#     if not verify_payment(data.payment_reference):
-#         raise HTTPException(
-#             status_code=400,
-#             detail="Payment verification failed"
-#         )
+    sales = db.query(Sale).order_by(
+        Sale.created_at.desc()
+    ).all()
 
-#     total_amount = Decimal("0.00")
+    return sales
 
-#     sale = Sale(
-#         bill_number = f"BILL-{uuid4().hex[:10].upper()}",
-#         total_amount = total_amount
-#     )
+@router.get("/{bill_number}",response_model=SaleResponse)
+def get_sale(bill_number : str, db : Session = Depends(get_db)):
 
-#     db.add(sale)
-#     db.flush()
+    sale = db.query(Sale).filter(
+        Sale.bill_number == bill_number
+    ).first()
 
-#     for item in data.items:
-#         product = db.query(Product).filter(
-#             Product.barcode == item.barcode
-#         ).first()
-#         if not product:
-#             raise HTTPException(
-#                 status_code=404,
-#                 details = f"Product with barcode {item.barcode} not found"
-#             )
-
+    if not sale:
+        raise HTTPException(
+            status_code=404,
+            detail = f"Sale with BILL-ID : {bill_number} not found"
+        )
+    return sale
