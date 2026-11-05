@@ -10,7 +10,12 @@ from app.models.sale_item import SaleItem
 from app.models.product import Product
 from app.models.inventory_batch import InventoryBatch
 from app.db.database import SessionLocal
-from app.schemas.sale import SaleCreate, SalePreviewResponse
+
+from app.schemas.sale import(
+    SaleCreate,
+    SalePreviewResponse,
+    SaleResponse,
+    SaleCheckoutCreate)
 
 router = APIRouter(
     prefix="/sales",
@@ -24,9 +29,28 @@ def get_db():
     finally:
         db.close()
 
+def verify_payment(payment_reference: str):
+    # Temporary testing logic
+    return payment_reference == "TEST_SUCCESS"
 
-@router.post("/checkout")
-def create_sale(data: SaleCreate, db: Session = Depends(get_db)):
+  
+
+@router.post("/checkout", response_model=SaleResponse)
+def create_sale(data: SaleCheckoutCreate, db: Session = Depends(get_db)):
+
+    if not verify_payment(data.payment_reference):
+        raise HTTPException(
+            status_code=400,
+            detail="Payment verification failed"
+        )
+
+    aggregated_items = {}
+
+    for item in data.items:
+        if item.barcode in aggregated_items:
+            aggregated_items[item.barcode] += item.quantity
+        else:
+            aggregated_items[item.barcode] = item.quantity
 
     total_amount = Decimal("0.00")
 
@@ -39,17 +63,17 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db)):
         db.add(sale)
         db.flush()
 
-        for item in data.items:
+        for barcode,quantity in aggregated_items.items():
 
             #1.Fetching product using barcode
             product = db.query(Product).filter(
-                Product.barcode == item.barcode
+                Product.barcode == barcode
             ).first()
 
             if not product:
                 raise HTTPException(
                     status_code=404,
-                    detail=f"Product with barcode {item.barcode} not found"
+                    detail=f"Product with barcode {barcode} not found"
                 )
 
             #2.Fetching inventory batches using FEFO(First Expiry First Out)
@@ -70,7 +94,7 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db)):
             #3. Checking if stock is avaible or not
             available_stock = sum(batch.quantity for batch in batches)
 
-            if available_stock < item.quantity:
+            if available_stock < quantity:
                 raise HTTPException(
                     status_code=400,  
                     detail = f"Insufficient stock for {product.name}"
@@ -78,10 +102,10 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db)):
 
             #4. calculating price
             unit_price = product.selling_price
-            subtotal = unit_price * item.quantity
+            subtotal = unit_price * quantity
 
             # 5. Deduct inventory using FEFO 
-            remaining_quantity = item.quantity
+            remaining_quantity = quantity
 
             for batch in batches:
 
@@ -99,7 +123,7 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db)):
             #6. Create sale item
             sale_item = SaleItem(
                 product_id = product.id,
-                quantity = item.quantity,
+                quantity = quantity,
                 unit_price = unit_price,
                 subtotal = subtotal
             )
@@ -168,3 +192,34 @@ def preview_sale(data: SaleCreate,db: Session = Depends(get_db)):
     }
 
     return preview_response
+
+
+
+# @router.post("/checkout", response_model=SaleResponse)
+# def checkout_sale(data: SaleCheckoutCreate, db: Session = Depends(get_db)):
+#     if not verify_payment(data.payment_reference):
+#         raise HTTPException(
+#             status_code=400,
+#             detail="Payment verification failed"
+#         )
+
+#     total_amount = Decimal("0.00")
+
+#     sale = Sale(
+#         bill_number = f"BILL-{uuid4().hex[:10].upper()}",
+#         total_amount = total_amount
+#     )
+
+#     db.add(sale)
+#     db.flush()
+
+#     for item in data.items:
+#         product = db.query(Product).filter(
+#             Product.barcode == item.barcode
+#         ).first()
+#         if not product:
+#             raise HTTPException(
+#                 status_code=404,
+#                 details = f"Product with barcode {item.barcode} not found"
+#             )
+
