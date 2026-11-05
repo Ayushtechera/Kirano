@@ -40,3 +40,6 @@ class SalePreviewResponse(BaseModel):
     sale_items: list[SalePreviewItemResponse]
     total_amount: Decimal
 
+
+class SaleCheckoutCreate(SaleCreate):
+    payment_reference : str
