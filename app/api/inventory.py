@@ -11,6 +11,12 @@ from app.schemas.inventory import StockInCreate, StockInResponse
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
 
 
+# Status priority:
+# 1. quantity == 0 → DEPLETED
+# 2. expiry_date < date.today() → EXPIRED
+# 3. Otherwise → ACTIVE
+
+
 @router.post("/stock-in", response_model=StockInResponse, status_code=201)
 def stock_in(data: StockInCreate, db: Session = Depends(get_db)):
     product = db.query(Product).filter(
@@ -42,8 +48,12 @@ def stock_in(data: StockInCreate, db: Session = Depends(get_db)):
     
     return batch
 
+# Status priority:
+# 1. quantity == 0 → DEPLETED
+# 2. expiry_date < date.today() → EXPIRED
+# 3. Otherwise → ACTIVE
 
-@router.get("/product/{product_id}")
+@router.get("/product/{product_id}", response_model=list[StockInResponse])
 def get_product_batches(
     product_id: int,
     db: Session = Depends(get_db)

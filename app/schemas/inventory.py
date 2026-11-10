@@ -15,6 +15,7 @@ class StockInResponse(BaseModel):
     quantity: int
     expiry_date: date
     stock_added_at: datetime
+    status : str
 
     model_config = ConfigDict(from_attributes=True)
 
