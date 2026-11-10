@@ -14,5 +14,6 @@ class SaleItem(Base):
     quantity = Column(Integer, nullable=False)
     unit_price = Column(Numeric(10, 2), nullable=False)
     subtotal = Column(Numeric(10, 2), nullable=False)
+    unit_cost = Column(Numeric(10,2),nullable=False)
 
     sale = relationship("Sale", back_populates="items")

@@ -125,7 +125,8 @@ def create_sale(data: SaleCheckoutCreate, db: Session = Depends(get_db)):
                 product_id = product.id,
                 quantity = quantity,
                 unit_price = unit_price,
-                subtotal = subtotal
+                subtotal = subtotal,
+                unit_cost=product.cost_price
             )
 
             sale.items.append(sale_item)
@@ -145,8 +146,9 @@ def create_sale(data: SaleCheckoutCreate, db: Session = Depends(get_db)):
         db.rollback()
         raise
 
-    except SQLAlchemyError:
+    except SQLAlchemyError as e:
         db.rollback()
+        print("DATABASE ERROR:", repr(e))
         raise HTTPException(
             status_code=500,
             detail = "Billing failed due to a database error"
