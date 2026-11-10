@@ -12,4 +12,8 @@ class Product(Base):
     weight = Column(String(50))
     selling_price = Column(Numeric(10,2), nullable=False)
     cost_price = Column(Numeric(10,2), nullable=False) 
-    inventory_batches = relationship("InventoryBatch", back_populates="product")
+    inventory_batches = relationship(
+        "InventoryBatch",
+        back_populates="product",
+        cascade="all, delete-orphan"
+    )

@@ -5,7 +5,7 @@ from sqlalchemy import func
 
 
 from app.api.categories import get_db
-from app.models import Product, Category, InventoryBatch 
+from app.models import Product, Category, InventoryBatch, SaleItem
 from app.schemas.product import ProductCreate,ProductResponse,ProductDetailResponse, ProductUpdate
 
 
@@ -188,6 +188,17 @@ def delete_product(
 
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
+
+    # Historical Sales Check
+    sale_items = db.query(SaleItem).filter(
+        SaleItem.product_id == product.id
+    ).first()
+
+    if sale_items:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot delete the product. It has associated sales records."
+        )
 
     db.delete(product)
     db.commit()
