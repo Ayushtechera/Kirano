@@ -53,7 +53,7 @@ def stock_in(data: StockInCreate, db: Session = Depends(get_db)):
 # 2. expiry_date < date.today() → EXPIRED
 # 3. Otherwise → ACTIVE
 
-@router.get("/product/{product_id}", response_model=list[StockInResponse])
+@router.get("/product/{product_id}/active", response_model=list[StockInResponse])
 def get_product_batches(
     product_id: int,
     db: Session = Depends(get_db)
@@ -69,7 +69,31 @@ def get_product_batches(
         )
 
     batches = db.query(InventoryBatch).filter(
-        InventoryBatch.product_id == product_id
+        InventoryBatch.product_id == product_id,
+        InventoryBatch.quantity > 0,
+        InventoryBatch.expiry_date >= date.today()
     ).order_by(InventoryBatch.expiry_date.asc()).all()
+    return batches
+
+
+@router.get("/product/{product_id}/history", response_model=list[StockInResponse])
+def get_product_batch_history(product_id:int, db: Session = Depends(get_db)):
+
+    product = db.query(Product).filter(
+        Product.id == product_id
+    ).first()
+
+    if not product:
+        raise HTTPException(
+            status_code=404,
+            detail="Product not found"
+        )
+
+    batches  = db.query(InventoryBatch).filter(
+        InventoryBatch.product_id == product_id
+    ).order_by(
+        InventoryBatch.expiry_date.asc()
+    ).all()
 
     return batches
+    
