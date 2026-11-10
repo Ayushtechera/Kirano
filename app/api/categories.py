@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.db.database import SessionLocal
 from app.models import Category
+from app.models.product import Product
 from app.schemas.category import CategoryCreate, CategoryResponse
 
 router = APIRouter(prefix="/categories", tags=["Categories"])
@@ -53,6 +54,20 @@ def delete_category(
             status_code=404,
             detail="Category not found"
         )
+
+    product = db.query(Product).filter(
+        Product.category_id == category.id
+    ).first()
+
+    if product:
+        raise HTTPException(
+            status_code=409,
+            detail = "Cannot delete category. Products are associated with this category."
+        )
+    
+
+
+
 
     db.delete(category)
     db.commit()
