@@ -43,3 +43,14 @@ class SalePreviewResponse(BaseModel):
 
 class SaleCheckoutCreate(SaleCreate):
     payment_reference : str
+
+
+class SalesSummaryResponse(BaseModel):
+    start_date: datetime
+    end_date: datetime
+    total_revenue: Decimal
+    total_orders: int
+    total_cogs: Decimal
+    gross_profit: Decimal
+    profit_margin: Decimal
+
