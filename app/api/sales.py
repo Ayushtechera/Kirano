@@ -2,8 +2,11 @@ from fastapi import APIRouter,Depends,HTTPException
 from sqlalchemy.orm import Session
 from decimal import Decimal
 from uuid import uuid4
-from datetime import date,datetime,timezone
+from datetime import date,datetime,timezone,timedelta,time
+from calendar import monthrange
+from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
+from zoneinfo import ZoneInfo
 
 from app.models.sale import Sale
 from app.models.sale_item import SaleItem
@@ -15,12 +18,16 @@ from app.schemas.sale import(
     SaleCreate,
     SalePreviewResponse,
     SaleResponse,
-    SaleCheckoutCreate)
+    SaleCheckoutCreate,
+    SalesSummaryResponse
+    )
 
 router = APIRouter(
     prefix="/sales",
     tags=["Sales"]
 )
+
+IST = ZoneInfo("Asia/Kolkata")
 
 def get_db():
     db = SessionLocal()
@@ -33,7 +40,57 @@ def verify_payment(payment_reference: str):
     # Temporary testing logic
     return payment_reference == "TEST_SUCCESS"
 
-  
+# Date Filters:
+# today(time)       -> From today's 00:00 to tomorrow's 00:00.
+# last_7_days(timedelta) -> Today and the previous 6 calendar days.
+# this_month(monthrange)  -> From the first day of the current month to the first day of the next month.
+# custom      -> User-provided start_date and end_date.
+
+def get_date_range(period: str, start_date: date = None, end_date:date = None):
+    today = date.today()
+
+    if period == "today":
+        start = datetime.combine(today,time.min,tzinfo=IST)
+        end = datetime.combine(today + timedelta(days=1),time.min,tzinfo=IST)
+
+    elif period == "last_7_days":
+        start = datetime.combine(today - timedelta(days=6),time.min,tzinfo=IST)
+        end = datetime.combine(today + timedelta(days=1),time.min,tzinfo=IST)
+
+    elif period == "this_month":
+        start = datetime.combine(today.replace(day=1), time.min,tzinfo=IST)
+
+        if today.month == 12:
+            next_month = today.replace(year=today.year + 1, month=1, day=1)
+        else:
+            next_month = today.replace(month=today.month + 1, day=1)
+
+        end = datetime.combine(next_month,time.min,tzinfo=IST)
+
+    elif period == "custom":
+        if not start_date or not end_date:
+            raise HTTPException(
+                status_code=400,
+                detail="Both start_date and end_date are required"
+            )
+
+        if start_date > end_date:
+            raise HTTPException(
+                status_code=400,
+                detail="start_date cannot be after end_date"
+            )
+
+        start = datetime.combine(start_date,time.min,tzinfo=IST)
+        end   = datetime.combine(end_date + timedelta(days=1),time.min,tzinfo=IST)
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid Period"
+        )
+    return start,end
+
+# ALWAYS:
+# Specific routes first, dynamic routes later.
 
 @router.post("/checkout", response_model=SaleResponse)
 def create_sale(data: SaleCheckoutCreate, db: Session = Depends(get_db)):
@@ -152,8 +209,6 @@ def create_sale(data: SaleCheckoutCreate, db: Session = Depends(get_db)):
             detail = "Billing failed due to a database error"
         )
 
-
-
 @router.post("/preview", response_model=SalePreviewResponse)
 def preview_sale(data: SaleCreate,db: Session = Depends(get_db)):
 
@@ -193,7 +248,6 @@ def preview_sale(data: SaleCreate,db: Session = Depends(get_db)):
 
     return preview_response
 
-
 @router.get("/",response_model=list[SaleResponse])
 def get_sale(db: Session = Depends(get_db)):
 
@@ -203,13 +257,54 @@ def get_sale(db: Session = Depends(get_db)):
 
     return sales
 
+@router.get("/summary", response_model=SalesSummaryResponse)
+def get_sales_summary(
+    period: str = "today",
+    start_date: date = None,
+    end_date: date = None,
+    db: Session = Depends(get_db)
+):
+    start, end = get_date_range(period, start_date, end_date)
+
+    result = db.query(
+        func.coalesce(func.sum(Sale.total_amount),0).label("total_revenue"),
+        func.count(func.distinct(Sale.id)).label("total_orders"),
+        func.coalesce(
+            func.sum(SaleItem.unit_cost * SaleItem.quantity),0
+        ).label("total_cogs")
+    ).outerjoin(
+        SaleItem,SaleItem.sale_id == Sale.id
+    ).filter(
+        Sale.created_at >= start,
+        Sale.created_at < end
+    ).first()
+
+    total_revenue = Decimal(str(result.total_revenue))
+    total_cogs = Decimal(str(result.total_cogs))
+
+    gross_profit = total_revenue - total_cogs
+
+    profit_margin = (
+        (gross_profit / total_revenue) * 100
+        if total_revenue > 0
+        else Decimal("0.00")
+    )
+    return {
+        "start_date": start,
+        "end_date": end,
+        "total_revenue": total_revenue,
+        "total_orders": result.total_orders,
+        "total_cogs": total_cogs,
+        "gross_profit": gross_profit,
+        "profit_margin": profit_margin
+    }
+
+
 @router.get("/{bill_number}",response_model=SaleResponse)
 def get_sale(bill_number : str, db : Session = Depends(get_db)):
-
     sale = db.query(Sale).filter(
         Sale.bill_number == bill_number
     ).first()
-
     if not sale:
         raise HTTPException(
             status_code=404,
