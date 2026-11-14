@@ -2,7 +2,7 @@ from fastapi import APIRouter,Depends,HTTPException
 from sqlalchemy.orm import Session
 from decimal import Decimal
 from uuid import uuid4
-from datetime import date
+from datetime import date,datetime,timezone
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.models.sale import Sale
@@ -90,7 +90,6 @@ def create_sale(data: SaleCheckoutCreate, db: Session = Depends(get_db)):
             # Locks the selected inventory batch rows to prevent concurrent transactions
             # from modifying the same stock until the current transaction is completed.
 
-
             #3. Checking if stock is avaible or not
             available_stock = sum(batch.quantity for batch in batches)
 
@@ -108,17 +107,16 @@ def create_sale(data: SaleCheckoutCreate, db: Session = Depends(get_db)):
             remaining_quantity = quantity
 
             for batch in batches:
-
                 if remaining_quantity == 0:
                     break
-
                 deducted_quantity = min(
                     batch.quantity,
                     remaining_quantity
                 )
-
                 batch.quantity -= deducted_quantity
                 remaining_quantity -= deducted_quantity
+                if batch.quantity == 0 and batch.depleted_at is None:
+                    batch.depleted_at = datetime.now(timezone.utc)
 
             #6. Create sale item
             sale_item = SaleItem(
