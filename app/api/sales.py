@@ -266,21 +266,31 @@ def get_sales_summary(
 ):
     start, end = get_date_range(period, start_date, end_date)
 
-    result = db.query(
+    # Calculate total revenue and total orders
+    sales_result = db.query(
         func.coalesce(func.sum(Sale.total_amount),0).label("total_revenue"),
-        func.count(func.distinct(Sale.id)).label("total_orders"),
-        func.coalesce(
-            func.sum(SaleItem.unit_cost * SaleItem.quantity),0
-        ).label("total_cogs")
-    ).outerjoin(
-        SaleItem,SaleItem.sale_id == Sale.id
+        func.count(Sale.id).label("total_orders")
     ).filter(
         Sale.created_at >= start,
         Sale.created_at < end
     ).first()
 
-    total_revenue = Decimal(str(result.total_revenue))
-    total_cogs = Decimal(str(result.total_cogs))
+    # Calculate total cost of goods sold
+    cogs_result = db.query(
+        func.coalesce(
+            func.sum(SaleItem.unit_cost * SaleItem.quantity),0
+        ).label("total_cogs")
+    ).join(
+        Sale,SaleItem.sale_id == Sale.id
+    ).filter(
+        Sale.created_at >= start,
+        Sale.created_at < end
+    ).first()
+
+
+    total_revenue = Decimal(str(sales_result.total_revenue))
+    total_orders = sales_result.total_orders
+    total_cogs = Decimal(str(cogs_result.total_cogs))
 
     gross_profit = total_revenue - total_cogs
 
@@ -293,7 +303,7 @@ def get_sales_summary(
         "start_date": start,
         "end_date": end,
         "total_revenue": total_revenue,
-        "total_orders": result.total_orders,
+        "total_orders": total_orders,
         "total_cogs": total_cogs,
         "gross_profit": gross_profit,
         "profit_margin": profit_margin
