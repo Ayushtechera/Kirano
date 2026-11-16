@@ -94,75 +94,60 @@ def get_date_range(period: str, start_date: date = None, end_date:date = None):
 
 @router.post("/checkout", response_model=SaleResponse)
 def create_sale(data: SaleCheckoutCreate, db: Session = Depends(get_db)):
-
     if not verify_payment(data.payment_reference):
         raise HTTPException(
             status_code=400,
             detail="Payment verification failed"
         )
-
     aggregated_items = {}
-
     for item in data.items:
         if item.barcode in aggregated_items:
             aggregated_items[item.barcode] += item.quantity
         else:
             aggregated_items[item.barcode] = item.quantity
-
     total_amount = Decimal("0.00")
-
     sale = Sale(
         bill_number = f"BILL-{uuid4().hex[:10].upper()}",
         total_amount = total_amount
     )
-
     try: 
         db.add(sale)
         db.flush()
-
         for barcode,quantity in aggregated_items.items():
-
             #1.Fetching product using barcode
             product = db.query(Product).filter(
                 Product.barcode == barcode
             ).first()
-
             if not product:
                 raise HTTPException(
                     status_code=404,
                     detail=f"Product with barcode {barcode} not found"
                 )
-
             #2.Fetching inventory batches using FEFO(First Expiry First Out)
             batches = db.query(InventoryBatch).filter(
                 InventoryBatch.product_id == product.id,
-                InventoryBatch.expiry_date > date.today(),
+                InventoryBatch.expiry_date >= date.today(),
                 InventoryBatch.quantity > 0
             ).order_by(
                 InventoryBatch.expiry_date.asc(),
                 InventoryBatch.stock_added_at.asc()
             ).with_for_update().all()
-
             # This with_for_update() is used to :
             # Locks the selected inventory batch rows to prevent concurrent transactions
             # from modifying the same stock until the current transaction is completed.
-
             #3. Checking if stock is avaible or not
             available_stock = sum(batch.quantity for batch in batches)
-
             if available_stock < quantity:
                 raise HTTPException(
                     status_code=400,  
                     detail = f"Insufficient stock for {product.name}"
                 )
-
             #4. calculating price
             unit_price = product.selling_price
             subtotal = unit_price * quantity
-
+            total_cost = Decimal("0.00")
             # 5. Deduct inventory using FEFO 
             remaining_quantity = quantity
-
             for batch in batches:
                 if remaining_quantity == 0:
                     break
@@ -170,31 +155,32 @@ def create_sale(data: SaleCheckoutCreate, db: Session = Depends(get_db)):
                     batch.quantity,
                     remaining_quantity
                 )
+                batch_cost = (
+                    batch.unit_cost
+                    if batch.unit_cost is not None
+                    else product.cost_price
+                )
+
+                total_cost += batch_cost * deducted_quantity
                 batch.quantity -= deducted_quantity
                 remaining_quantity -= deducted_quantity
                 if batch.quantity == 0 and batch.depleted_at is None:
                     batch.depleted_at = datetime.now(timezone.utc)
-
             #6. Create sale item
             sale_item = SaleItem(
                 product_id = product.id,
                 quantity = quantity,
                 unit_price = unit_price,
                 subtotal = subtotal,
-                unit_cost=product.cost_price
+                unit_cost= total_cost / quantity
             )
-
             sale.items.append(sale_item)
-
             total_amount += subtotal
-
         # 7. Update total amount
         sale.total_amount = total_amount
-
         # 8. Commit transaction
         db.commit()
         db.refresh(sale)
-
         return sale
 
     except HTTPException:
@@ -308,7 +294,6 @@ def get_sales_summary(
         "gross_profit": gross_profit,
         "profit_margin": profit_margin
     }
-
 
 @router.get("/{bill_number}",response_model=SaleResponse)
 def get_sale(bill_number : str, db : Session = Depends(get_db)):
