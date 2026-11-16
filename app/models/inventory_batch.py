@@ -4,7 +4,7 @@ from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from datetime import date
 from sqlalchemy import DateTime
-
+from sqlalchemy import Numeric
 
 class InventoryBatch(Base):
     __tablename__ = "inventory_batches"
@@ -16,6 +16,7 @@ class InventoryBatch(Base):
     stock_added_at = Column(DateTime(timezone=True), server_default=func.now())
     depleted_at = Column(DateTime(timezone=True),nullable=True)
     product = relationship("Product", back_populates="inventory_batches")
+    unit_cost = Column(Numeric(10,2),nullable=True)
     
     @property
     def status(self):

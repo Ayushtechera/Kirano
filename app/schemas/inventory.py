@@ -1,11 +1,12 @@
 from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict, Field
-
+from decimal import Decimal
 
 class StockInCreate(BaseModel):
     product_id: int = Field(gt=0)
     quantity: int = Field(gt=0)
     expiry_date: date
+    unit_cost: Decimal = Field(gt=0)
 
 
 
@@ -17,6 +18,7 @@ class StockInResponse(BaseModel):
     stock_added_at: datetime
     status : str
     depleted_at : datetime | None = None
+    unit_cost: Decimal | None = None
     model_config = ConfigDict(from_attributes=True)
 
 
