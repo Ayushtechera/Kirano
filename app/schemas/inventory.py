@@ -36,3 +36,11 @@ class InventoryValuationResponse(BaseModel):
     expired_stock_loss: Decimal
     active_unknown_cost_quantity: int
     expired_unknown_cost_quantity: int
+
+class NearExpiryResponse(BaseModel):
+    product_id: int
+    product_name: str
+    batch_id: int
+    quantity: int
+    expiry_date: date
+    days_until_expiry: int

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
-from datetime import date
+from datetime import date,timedelta
 from sqlalchemy import func, case
 
 from app.api.categories import get_db
@@ -10,7 +10,8 @@ from app.schemas.inventory import (
     StockInCreate,
     StockInResponse,
     InventorySummaryResponse,
-    InventoryValuationResponse
+    InventoryValuationResponse,
+    NearExpiryResponse
     )
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
@@ -211,3 +212,34 @@ def get_inventory_valuation(db: Session = Depends(get_db)):
         "active_unknown_cost_quantity": active_unknown_cost_quantity,
         "expired_unknown_cost_quantity": expired_unknown_cost_quantity
     }
+
+@router.get("/near-expiry", response_model=list[NearExpiryResponse])
+def get_near_expiry_stock(db: Session = Depends(get_db)):
+    today = date.today()
+    expiry_limit = today + timedelta(days=30)
+
+    near_expiry_batches = db.query(
+        InventoryBatch,
+        Product.name.label("product_name")
+    ).join(
+        Product,
+        InventoryBatch.product_id == Product.id
+    ).filter(
+        InventoryBatch.quantity > 0,
+        InventoryBatch.expiry_date >= today,
+        InventoryBatch.expiry_date <= expiry_limit
+    ).order_by(
+        InventoryBatch.expiry_date.asc()
+    ).all()
+
+    return [
+        {
+            "product_id": batch.product_id,
+            "product_name": product_name,
+            "batch_id": batch.id,
+            "quantity": batch.quantity,
+            "expiry_date": batch.expiry_date,
+            "days_until_expiry": (batch.expiry_date - today).days
+        }
+        for batch, product_name in near_expiry_batches
+    ] 
