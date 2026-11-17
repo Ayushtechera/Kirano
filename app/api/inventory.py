@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
-from datetime import date,timedelta
+from datetime import date, timedelta, datetime, timezone
 from sqlalchemy import func, case
 
 from app.api.categories import get_db
@@ -243,3 +243,53 @@ def get_near_expiry_stock(db: Session = Depends(get_db)):
         }
         for batch, product_name in near_expiry_batches
     ] 
+
+@router.post("/stock-out")
+def stock_out(barcode: str, db: Session = Depends(get_db)):
+
+    product = db.query(Product).filter(
+        Product.barcode == barcode
+    ).first()
+
+    if not product:
+        raise HTTPException(404, "Product not found")
+
+    batch = db.query(InventoryBatch).filter(
+        InventoryBatch.product_id == product.id,
+        InventoryBatch.quantity > 0,
+        InventoryBatch.expiry_date >= date.today()
+    ).order_by(
+        InventoryBatch.expiry_date.asc(),
+        InventoryBatch.stock_added_at.asc()
+    ).first()
+
+    if not batch:
+        raise HTTPException(400, "No active stock available")
+
+    batch.quantity -= 1
+
+    if batch.quantity == 0:
+        batch.depleted_at = datetime.now(timezone.utc)
+
+    try:
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(500, "Stock update failed")
+    
+    remaining_stock = db.query(
+        func.coalesce(func.sum(InventoryBatch.quantity), 0)
+    ).filter(
+        InventoryBatch.product_id == product.id,
+        InventoryBatch.quantity > 0,
+        InventoryBatch.expiry_date >= date.today()
+    ).scalar()
+
+    return {
+        "product_id": product.id,
+        "product_name": product.name,
+        "barcode": product.barcode,
+        "quantity_deducted": 1,
+        "remaining_stock": remaining_stock,
+        "message": "Stock deducted successfully"
+    }
