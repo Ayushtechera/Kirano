@@ -44,3 +44,8 @@ class NearExpiryResponse(BaseModel):
     quantity: int
     expiry_date: date
     days_until_expiry: int
+
+class StockAdjustmentCreate(BaseModel):
+    product_id: int = Field(gt=0)
+    quantity: int
+    reason: str
