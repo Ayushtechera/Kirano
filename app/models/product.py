@@ -11,7 +11,9 @@ class Product(Base):
     category_id = Column(Integer, ForeignKey("categories.id"),nullable=False)
     weight = Column(String(50))
     selling_price = Column(Numeric(10,2), nullable=False)
-    cost_price = Column(Numeric(10,2), nullable=False) 
+    cost_price = Column(Numeric(10,2), nullable=False)
+    reorder_level = Column(Integer, nullable=False, default=10)
+    
     inventory_batches = relationship(
         "InventoryBatch",
         back_populates="product",
