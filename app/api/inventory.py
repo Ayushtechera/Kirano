@@ -11,7 +11,8 @@ from app.schemas.inventory import (
     StockInResponse,
     InventorySummaryResponse,
     InventoryValuationResponse,
-    NearExpiryResponse
+    NearExpiryResponse,
+    StockAdjustmentCreate
     )
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
@@ -292,4 +293,104 @@ def stock_out(barcode: str, db: Session = Depends(get_db)):
         "quantity_deducted": 1,
         "remaining_stock": remaining_stock,
         "message": "Stock deducted successfully"
+    }
+
+
+@router.get("/low-stock")
+def get_low_stock_products(db: Session = Depends(get_db)):
+    today = date.today()
+
+    stock = db.query(
+        Product.id.label("product_id"),
+        Product.name.label("product_name"),
+        Product.reorder_level,
+        func.coalesce(func.sum(InventoryBatch.quantity), 0).label("current_stock")
+    ).outerjoin(
+        InventoryBatch,
+        (InventoryBatch.product_id == Product.id) &
+        (InventoryBatch.quantity > 0) &
+        (InventoryBatch.expiry_date >= today)
+    ).group_by(
+        Product.id,
+        Product.name,
+        Product.reorder_level
+    ).having(
+        func.coalesce(func.sum(InventoryBatch.quantity), 0)
+        <= Product.reorder_level
+    ).all()
+
+    return [
+        {
+            "product_id": row.product_id,
+            "product_name": row.product_name,
+            "reorder_level": row.reorder_level,
+            "current_stock": row.current_stock,
+            "stock_status": (
+                "OUT_OF_STOCK" if row.current_stock == 0
+                else "LOW_STOCK"
+            )
+        }
+        for row in stock
+    ]
+
+
+@router.post("/adjust-stock")
+def adjust_stock(data: StockAdjustmentCreate, db: Session = Depends(get_db)):
+
+    if data.quantity == 0:
+        raise HTTPException(400, "Adjustment quantity cannot be zero")
+
+    product = db.query(Product).filter(
+        Product.id == data.product_id
+    ).first()
+
+    if not product:
+        raise HTTPException(404, "Product not found")
+
+    remaining = abs(data.quantity)
+
+    if data.quantity < 0:
+        batches = db.query(InventoryBatch).filter(
+            InventoryBatch.product_id == product.id,
+            InventoryBatch.quantity > 0,
+            InventoryBatch.expiry_date >= date.today()
+        ).order_by(
+            InventoryBatch.expiry_date.asc(),
+            InventoryBatch.stock_added_at.asc()
+        ).all()
+
+        available = sum(batch.quantity for batch in batches)
+
+        if available < remaining:
+            raise HTTPException(400, "Insufficient active stock")
+
+        for batch in batches:
+            deducted = min(batch.quantity, remaining)
+            batch.quantity -= deducted
+            remaining -= deducted
+
+            if batch.quantity == 0:
+                batch.depleted_at = datetime.now(timezone.utc)
+
+            if remaining == 0:
+                break
+
+    else:
+        raise HTTPException(
+            400,
+            "For additional stock, use the stock-in endpoint"
+        )
+
+    try:
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(500, "Stock adjustment failed")
+
+    return {
+        "product_id": product.id,
+        "product_name": product.name,
+        "adjusted_quantity": data.quantity,
+        "reason": data.reason,
+        "message": "Stock adjusted successfully"
     }
