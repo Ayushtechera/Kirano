@@ -6,7 +6,12 @@ from sqlalchemy import func, case
 
 from app.api.categories import get_db
 from app.models import Product, InventoryBatch
-from app.schemas.inventory import StockInCreate, StockInResponse, InventorySummaryResponse
+from app.schemas.inventory import (
+    StockInCreate,
+    StockInResponse,
+    InventorySummaryResponse,
+    InventoryValuationResponse
+    )
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
 
@@ -131,3 +136,78 @@ def get_inventory_summary(db: Session = Depends(get_db)):
     ).all()
 
     return summary 
+
+@router.get("/valuation", response_model=InventoryValuationResponse)
+def get_inventory_valuation(db: Session = Depends(get_db)):
+    today = date.today()
+
+    active_stock_value = db.query(
+        func.coalesce(
+            func.sum(
+                case(
+                    (
+                        (InventoryBatch.quantity > 0) &
+                        (InventoryBatch.expiry_date >= today) & 
+                        (InventoryBatch.unit_cost.isnot(None)),
+                        InventoryBatch.quantity * InventoryBatch.unit_cost
+                    ),
+                    else_=0
+                )
+            ),0       
+        )
+    ).scalar()
+
+    expired_stock_loss = db.query(
+        func.coalesce(
+            func.sum(
+                case(
+                    (
+                        (InventoryBatch.quantity > 0) &
+                        (InventoryBatch.expiry_date < today)&
+                        (InventoryBatch.unit_cost.isnot(None)),
+                        InventoryBatch.quantity * InventoryBatch.unit_cost
+                    ),
+                    else_=0
+                )
+            ),0
+        )
+    ).scalar()
+
+    active_unknown_cost_quantity = db.query(
+        func.coalesce(
+            func.sum(
+                case(
+                    (
+                        (InventoryBatch.quantity > 0 ) &
+                        (InventoryBatch.expiry_date >= today) &
+                        (InventoryBatch.unit_cost.is_(None)),
+                        InventoryBatch.quantity
+                    ),
+                    else_=0
+                )
+            ),0
+        )
+    ).scalar()
+
+    expired_unknown_cost_quantity = db.query(
+        func.coalesce(
+            func.sum(
+                case(
+                    (
+                        (InventoryBatch.quantity > 0) &
+                        (InventoryBatch.expiry_date < today) &
+                        (InventoryBatch.unit_cost.is_(None)),
+                        InventoryBatch.quantity
+                    ),
+                    else_=0
+                )
+            )
+        ),0
+    ).scalar()
+
+    return {
+        "active_stock_value": active_stock_value,
+        "expired_stock_loss": expired_stock_loss,
+        "active_unknown_cost_quantity": active_unknown_cost_quantity,
+        "expired_unknown_cost_quantity": expired_unknown_cost_quantity
+    }

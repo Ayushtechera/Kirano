@@ -29,3 +29,10 @@ class InventorySummaryResponse(BaseModel):
     total_active_batches: int
     total_batches: int
     total_quantity_including_expired : int
+
+
+class InventoryValuationResponse(BaseModel):
+    active_stock_value: Decimal
+    expired_stock_loss: Decimal
+    active_unknown_cost_quantity: int
+    expired_unknown_cost_quantity: int
