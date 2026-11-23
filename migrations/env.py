@@ -7,7 +7,15 @@ from alembic import context
 
 
 from app.db.database import Base
-from app.models import Category, Product, InventoryBatch
+from app.models import (
+    Store,
+    Vendor,
+    Category,
+    Product,
+    InventoryBatch,
+    Sale,
+    SaleItem
+)
 from app.db.database import engine
 
 

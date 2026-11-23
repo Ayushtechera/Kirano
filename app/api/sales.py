@@ -13,6 +13,8 @@ from app.models.sale_item import SaleItem
 from app.models.product import Product
 from app.models.inventory_batch import InventoryBatch
 from app.db.database import SessionLocal
+from app.core.dependencies import get_current_vendor
+from app.models.vendor import Vendor
 
 from app.schemas.sale import(
     SaleCreate,
@@ -93,7 +95,7 @@ def get_date_range(period: str, start_date: date = None, end_date:date = None):
 # Specific routes first, dynamic routes later.
 
 @router.post("/checkout", response_model=SaleResponse)
-def create_sale(data: SaleCheckoutCreate, db: Session = Depends(get_db)):
+def create_sale(data: SaleCheckoutCreate, db: Session = Depends(get_db),vendor: Vendor = Depends(get_current_vendor)):
     if not verify_payment(data.payment_reference):
         raise HTTPException(
             status_code=400,
@@ -108,15 +110,18 @@ def create_sale(data: SaleCheckoutCreate, db: Session = Depends(get_db)):
     total_amount = Decimal("0.00")
     sale = Sale(
         bill_number = f"BILL-{uuid4().hex[:10].upper()}",
-        total_amount = total_amount
+        total_amount = total_amount,
+        store_id = vendor.store_id
     )
     try: 
         db.add(sale)
         db.flush()
         for barcode,quantity in aggregated_items.items():
+            barcode = barcode.strip()
             #1.Fetching product using barcode
             product = db.query(Product).filter(
-                Product.barcode == barcode
+                Product.barcode == barcode,
+                Product.store_id == vendor.store_id
             ).first()
             if not product:
                 raise HTTPException(
@@ -196,14 +201,15 @@ def create_sale(data: SaleCheckoutCreate, db: Session = Depends(get_db)):
         )
 
 @router.post("/preview", response_model=SalePreviewResponse)
-def preview_sale(data: SaleCreate,db: Session = Depends(get_db)):
+def preview_sale(data: SaleCreate,db: Session = Depends(get_db),vendor: Vendor = Depends(get_current_vendor)):
 
     sale_items=[]
     total_amount = Decimal("0.00")
      
     for item in data.items:
         product = db.query(Product).filter(
-            Product.barcode == item.barcode
+            Product.barcode == item.barcode,
+            Product.store_id == vendor.store_id
         ).first()
 
         if not product:
@@ -235,9 +241,11 @@ def preview_sale(data: SaleCreate,db: Session = Depends(get_db)):
     return preview_response
 
 @router.get("/",response_model=list[SaleResponse])
-def get_sale(db: Session = Depends(get_db)):
+def get_sale(db: Session = Depends(get_db),vendor: Vendor = Depends(get_current_vendor)):
 
-    sales = db.query(Sale).order_by(
+    sales = db.query(Sale).filter(
+        Sale.store_id == vendor.store_id
+    ).order_by(
         Sale.created_at.desc()
     ).all()
 
@@ -248,7 +256,8 @@ def get_sales_summary(
     period: str = "today",
     start_date: date = None,
     end_date: date = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    vendor: Vendor = Depends(get_current_vendor)
 ):
     start, end = get_date_range(period, start_date, end_date)
 
@@ -258,7 +267,8 @@ def get_sales_summary(
         func.count(Sale.id).label("total_orders")
     ).filter(
         Sale.created_at >= start,
-        Sale.created_at < end
+        Sale.created_at < end,
+        Sale.store_id == vendor.store_id
     ).first()
 
     # Calculate total cost of goods sold
@@ -270,7 +280,8 @@ def get_sales_summary(
         Sale,SaleItem.sale_id == Sale.id
     ).filter(
         Sale.created_at >= start,
-        Sale.created_at < end
+        Sale.created_at < end,
+        Sale.store_id == vendor.store_id
     ).first()
 
 
@@ -295,14 +306,21 @@ def get_sales_summary(
         "profit_margin": profit_margin
     }
 
-@router.get("/{bill_number}",response_model=SaleResponse)
-def get_sale(bill_number : str, db : Session = Depends(get_db)):
+@router.get("/{bill_number}", response_model=SaleResponse)
+def get_sale(
+    bill_number: str,
+    db: Session = Depends(get_db),
+    vendor: Vendor = Depends(get_current_vendor)
+):
     sale = db.query(Sale).filter(
-        Sale.bill_number == bill_number
+        Sale.bill_number == bill_number,
+        Sale.store_id == vendor.store_id
     ).first()
+
     if not sale:
         raise HTTPException(
             status_code=404,
-            detail = f"Sale with BILL-ID : {bill_number} not found"
+            detail=f"Sale with BILL-ID: {bill_number} not found"
         )
+
     return sale

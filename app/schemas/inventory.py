@@ -6,7 +6,7 @@ class StockInCreate(BaseModel):
     product_id: int = Field(gt=0)
     quantity: int = Field(gt=0)
     expiry_date: date
-    unit_cost: Decimal = Field(gt=0)
+    unit_cost: Decimal = Field(gt=0,max_digits=10,decimal_places=2)
 
 
 
@@ -47,5 +47,5 @@ class NearExpiryResponse(BaseModel):
 
 class StockAdjustmentCreate(BaseModel):
     product_id: int = Field(gt=0)
-    quantity: int
-    reason: str
+    quantity: int = Field(ne=0)
+    reason: str = Field(min_length=3, max_length=200)

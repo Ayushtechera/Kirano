@@ -1,4 +1,3 @@
-from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field
 from datetime import datetime, date
 from decimal import Decimal
@@ -8,10 +7,9 @@ class ProductCreate(BaseModel):
     barcode: str = Field(min_length=1, max_length=50)
     category_id: int = Field(gt=0)
     weight: str | None = None
+    reorder_level: int = Field(default=10,ge=0)
     selling_price: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
     cost_price: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
-
-
 
 class ProductResponse(BaseModel):
     id: int
@@ -21,7 +19,6 @@ class ProductResponse(BaseModel):
     weight: str | None
     selling_price: Decimal
     cost_price: Decimal
-
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -38,7 +35,12 @@ class ProductDetailResponse(ProductResponse):
 
 
 class ProductUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=1,max_length=100)
+    name: str | None = Field(default=None, min_length=1, max_length=100)
     weight: str | None = None
-    selling_price: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
-    cost_price: Decimal | None = Field(default=None, gt=0, max_digits=10, decimal_places=2)
+    category_id: int | None = Field(default=None, gt=0)
+    selling_price: Decimal | None = Field(
+        default=None, gt=0, max_digits=10, decimal_places=2
+    )
+    cost_price: Decimal | None = Field(
+        default=None, gt=0, max_digits=10, decimal_places=2
+    )

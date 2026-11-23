@@ -4,6 +4,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from datetime import date, timedelta, datetime, timezone
 from sqlalchemy import func, case
 
+from app.core.dependencies import get_current_vendor
+from app.models.vendor import Vendor
 from app.api.categories import get_db
 from app.models import Product, InventoryBatch
 from app.schemas.inventory import (
@@ -23,9 +25,10 @@ router = APIRouter(prefix="/inventory", tags=["Inventory"])
 # 3. Otherwise → ACTIVE
 
 @router.post("/stock-in", response_model=StockInResponse, status_code=201)
-def stock_in(data: StockInCreate, db: Session = Depends(get_db)):
+def stock_in(data: StockInCreate, db: Session = Depends(get_db),vendor: Vendor = Depends(get_current_vendor)):
     product = db.query(Product).filter(
-        Product.id == data.product_id
+        Product.id == data.product_id,
+        Product.store_id == vendor.store_id
     ).first()
 
     if not product:
@@ -60,42 +63,51 @@ def stock_in(data: StockInCreate, db: Session = Depends(get_db)):
 @router.get("/product/{product_id}/active", response_model=list[StockInResponse])
 def get_product_batches(
     product_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    vendor: Vendor = Depends(get_current_vendor)
 ):
     product = db.query(Product).filter(
-        Product.id == product_id 
+        Product.id == product_id,
+        Product.store_id == vendor.store_id
     ).first()
+
     if not product:
-        raise HTTPException(
-            status_code=404,
-            detail="Product not found"
-        )
+        raise HTTPException(status_code=404, detail="Product not found")
+
     batches = db.query(InventoryBatch).filter(
-        InventoryBatch.product_id == product_id,
+        InventoryBatch.product_id == product.id,
         InventoryBatch.quantity > 0,
         InventoryBatch.expiry_date >= date.today()
-    ).order_by(InventoryBatch.expiry_date.asc()).all()
-    return batches
-
-@router.get("/product/{product_id}/history", response_model=list[StockInResponse])
-def get_product_batch_history(product_id:int, db: Session = Depends(get_db)):
-    product = db.query(Product).filter(
-        Product.id == product_id
-    ).first()
-    if not product:
-        raise HTTPException(
-            status_code=404,
-            detail="Product not found"
-        )
-    batches  = db.query(InventoryBatch).filter(
-        InventoryBatch.product_id == product_id
     ).order_by(
         InventoryBatch.expiry_date.asc()
     ).all()
+
+    return batches
+
+@router.get("/product/{product_id}/history", response_model=list[StockInResponse])
+def get_product_batch_history(
+    product_id: int,
+    db: Session = Depends(get_db),
+    vendor: Vendor = Depends(get_current_vendor)
+):
+    product = db.query(Product).filter(
+        Product.id == product_id,
+        Product.store_id == vendor.store_id
+    ).first()
+
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    batches = db.query(InventoryBatch).filter(
+        InventoryBatch.product_id == product.id
+    ).order_by(
+        InventoryBatch.expiry_date.asc()
+    ).all()
+
     return batches
 
 @router.get("/summary", response_model=list[InventorySummaryResponse])
-def get_inventory_summary(db: Session = Depends(get_db)):
+def get_inventory_summary(db: Session = Depends(get_db),vendor: Vendor = Depends(get_current_vendor)):
     today = date.today()
     summary = db.query(
         Product.id.label("product_id"),
@@ -132,6 +144,8 @@ def get_inventory_summary(db: Session = Depends(get_db)):
     ).outerjoin( # Outerjoin : It will also consider those products  which don't have batches.
         InventoryBatch,
         Product.id == InventoryBatch.product_id
+    ).filter(
+        Product.store_id == vendor.store_id
     ).group_by(
         Product.id,
         Product.name
@@ -140,7 +154,7 @@ def get_inventory_summary(db: Session = Depends(get_db)):
     return summary 
 
 @router.get("/valuation", response_model=InventoryValuationResponse)
-def get_inventory_valuation(db: Session = Depends(get_db)):
+def get_inventory_valuation(db: Session = Depends(get_db),vendor: Vendor = Depends(get_current_vendor)):
     today = date.today()
 
     active_stock_value = db.query(
@@ -157,6 +171,11 @@ def get_inventory_valuation(db: Session = Depends(get_db)):
                 )
             ),0       
         )
+    ).join(
+        Product,
+        InventoryBatch.product_id == Product.id
+    ).filter(
+        Product.store_id == vendor.store_id
     ).scalar()
 
     expired_stock_loss = db.query(
@@ -173,6 +192,11 @@ def get_inventory_valuation(db: Session = Depends(get_db)):
                 )
             ),0
         )
+    ).join(
+        Product,
+        InventoryBatch.product_id == Product.id
+    ).filter(
+        Product.store_id == vendor.store_id
     ).scalar()
 
     active_unknown_cost_quantity = db.query(
@@ -189,6 +213,11 @@ def get_inventory_valuation(db: Session = Depends(get_db)):
                 )
             ),0
         )
+    ).join(
+        Product,
+        InventoryBatch.product_id == Product.id
+    ).filter(
+        Product.store_id == vendor.store_id
     ).scalar()
 
     expired_unknown_cost_quantity = db.query(
@@ -205,6 +234,11 @@ def get_inventory_valuation(db: Session = Depends(get_db)):
                 )
             )
         ),0
+    ).join(
+        Product,
+        InventoryBatch.product_id == Product.id
+    ).filter(
+        Product.store_id == vendor.store_id
     ).scalar()
 
     return {
@@ -215,7 +249,7 @@ def get_inventory_valuation(db: Session = Depends(get_db)):
     }
 
 @router.get("/near-expiry", response_model=list[NearExpiryResponse])
-def get_near_expiry_stock(db: Session = Depends(get_db)):
+def get_near_expiry_stock(db: Session = Depends(get_db),vendor: Vendor = Depends(get_current_vendor)):
     today = date.today()
     expiry_limit = today + timedelta(days=30)
 
@@ -226,6 +260,7 @@ def get_near_expiry_stock(db: Session = Depends(get_db)):
         Product,
         InventoryBatch.product_id == Product.id
     ).filter(
+        Product.store_id == vendor.store_id,
         InventoryBatch.quantity > 0,
         InventoryBatch.expiry_date >= today,
         InventoryBatch.expiry_date <= expiry_limit
@@ -245,12 +280,13 @@ def get_near_expiry_stock(db: Session = Depends(get_db)):
         for batch, product_name in near_expiry_batches
     ] 
 
-@router.post("/stock-out")
-def stock_out(barcode: str, db: Session = Depends(get_db)):
 
+@router.post("/stock-out")
+def stock_out(barcode: str,db: Session = Depends(get_db),vendor: Vendor = Depends(get_current_vendor)):
     product = db.query(Product).filter(
-        Product.barcode == barcode
-    ).first()
+        Product.barcode == barcode.strip(),
+        Product.store_id == vendor.store_id
+    ).with_for_update().first()
 
     if not product:
         raise HTTPException(404, "Product not found")
@@ -262,7 +298,7 @@ def stock_out(barcode: str, db: Session = Depends(get_db)):
     ).order_by(
         InventoryBatch.expiry_date.asc(),
         InventoryBatch.stock_added_at.asc()
-    ).first()
+    ).with_for_update().first()
 
     if not batch:
         raise HTTPException(400, "No active stock available")
@@ -277,7 +313,7 @@ def stock_out(barcode: str, db: Session = Depends(get_db)):
     except SQLAlchemyError:
         db.rollback()
         raise HTTPException(500, "Stock update failed")
-    
+
     remaining_stock = db.query(
         func.coalesce(func.sum(InventoryBatch.quantity), 0)
     ).filter(
@@ -297,7 +333,7 @@ def stock_out(barcode: str, db: Session = Depends(get_db)):
 
 
 @router.get("/low-stock")
-def get_low_stock_products(db: Session = Depends(get_db)):
+def get_low_stock_products(db: Session = Depends(get_db),vendor: Vendor = Depends(get_current_vendor)):
     today = date.today()
 
     stock = db.query(
@@ -310,6 +346,8 @@ def get_low_stock_products(db: Session = Depends(get_db)):
         (InventoryBatch.product_id == Product.id) &
         (InventoryBatch.quantity > 0) &
         (InventoryBatch.expiry_date >= today)
+    ).filter(
+        Product.store_id == vendor.store_id
     ).group_by(
         Product.id,
         Product.name,
@@ -335,13 +373,14 @@ def get_low_stock_products(db: Session = Depends(get_db)):
 
 
 @router.post("/adjust-stock")
-def adjust_stock(data: StockAdjustmentCreate, db: Session = Depends(get_db)):
+def adjust_stock(data: StockAdjustmentCreate, db: Session = Depends(get_db),vendor: Vendor = Depends(get_current_vendor)):
 
     if data.quantity == 0:
         raise HTTPException(400, "Adjustment quantity cannot be zero")
 
     product = db.query(Product).filter(
-        Product.id == data.product_id
+        Product.id == data.product_id,
+        Product.store_id == vendor.store_id
     ).first()
 
     if not product:
