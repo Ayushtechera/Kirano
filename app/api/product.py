@@ -4,14 +4,14 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy import func
 
-from app.api.categories import get_db
+from app.db.database import get_db
 from app.core.dependencies import get_current_vendor
 from app.models import Product, Category, InventoryBatch, SaleItem
 from app.models.vendor import Vendor
 from app.schemas.product import (
     ProductCreate,
     ProductResponse,
-    ProductDetailResponse,
+    ProductDetailResponse, 
     ProductUpdate
 )
 
@@ -220,6 +220,20 @@ def update_product(
         if not category:
             raise HTTPException(status_code=404, detail="Category not found")
 
+    if data.barcode is not None:
+        existing = db.query(Product).filter(
+            Product.store_id == vendor.store_id,
+            Product.barcode == data.barcode.strip(),
+            Product.id != product_id
+        ).first()
+
+        if existing:
+            raise HTTPException(
+                status_code=409,
+                detail="Barcode already exists"
+            )
+    data.barcode = data.barcode.strip()
+    
     update = data.model_dump(exclude_unset=True)
 
     for field, value in update.items():

@@ -4,19 +4,13 @@ from sqlalchemy import func
 from app.core.dependencies import get_current_vendor
 
 from app.models import Category, Product
-# from app.models.product import Product
-from app.db.database import SessionLocal, get_db
+from app.db.database import get_db
 from app.models.vendor import Vendor
 from app.schemas.category import CategoryCreate, CategoryResponse
 
 router = APIRouter(prefix="/categories", tags=["Categories"])
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+
 
 @router.post("/", response_model=CategoryResponse, status_code=201)
 def create_category(data: CategoryCreate, db: Session = Depends(get_db), vendor: Vendor = Depends(get_current_vendor)):

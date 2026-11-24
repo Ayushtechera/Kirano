@@ -6,7 +6,7 @@ from sqlalchemy import func, case
 
 from app.core.dependencies import get_current_vendor
 from app.models.vendor import Vendor
-from app.api.categories import get_db
+from app.db.database import get_db
 from app.models import Product, InventoryBatch
 from app.schemas.inventory import (
     StockInCreate,

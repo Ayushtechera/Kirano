@@ -6,7 +6,7 @@ from sqlalchemy import pool
 from alembic import context
 
 
-from app.db.database import Base
+from app.db.database import Base,engine
 from app.models import (
     Store,
     Vendor,
@@ -16,8 +16,6 @@ from app.models import (
     Sale,
     SaleItem
 )
-from app.db.database import engine
-
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

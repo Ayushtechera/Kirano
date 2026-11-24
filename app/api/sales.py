@@ -12,7 +12,7 @@ from app.models.sale import Sale
 from app.models.sale_item import SaleItem
 from app.models.product import Product
 from app.models.inventory_batch import InventoryBatch
-from app.db.database import SessionLocal
+from app.db.database import get_db
 from app.core.dependencies import get_current_vendor
 from app.models.vendor import Vendor
 
@@ -30,13 +30,6 @@ router = APIRouter(
 )
 
 IST = ZoneInfo("Asia/Kolkata")
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 def verify_payment(payment_reference: str):
     # Temporary testing logic
